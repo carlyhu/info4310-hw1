@@ -5,9 +5,10 @@
         <script src="https://d3js.org/topojson.v3.min.js"></script>
         <style>
         body{
-            background-color: #bfe5f7;
+            background-color: #d0effd;
             font-family: Helvetica, sans-serif;
             margin: 30px;
+            color: darkslategrey;
         }
         .axis{
             color: white;
@@ -217,8 +218,7 @@
                 radar.append('g')
                 .attr("class","axis")
                 .attr("transform", "translate(" + (rmargin.left+305) + "," + (rmargin.top+305) + ")")
-                .call(radiusAxis);
-               
+                .call(radiusAxis)
     
             }
             requestData();
