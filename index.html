@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <script src="https://d3js.org/d3.v7.min.js"></script>
+        <script src="https://d3js.org/topojson.v3.min.js"></script>
+        <style>
+        body{
+            background-color: #bfe5f7;
+            font-family: Helvetica, sans-serif;
+            margin: 30px;
+        }
+        .axis{
+            color: white;
+        }
+        .agelabels{
+            display: flex;
+            flex-direction: row;
+        }
+        .all {
+            display: flex;
+            flex-direction: row;
+        }
+      
+        </style>
+    </head>
+    <body>
+        <h3> Carly Hu (ch862)</h3>
+        <h3> INFO 4310 Homework 1</h3>
+       
+        <div class = "all"> 
+        <div>
+        <h2> Distribution of Tree Ages Across SF</h2>
+
+        <svg id = "map" height = "650" width = "650" style = "margin: 20px"></svg>
+        <div class= "agelabels">
+        <p style="margin-left: 80px">2</p>
+        <p style="margin-left: 480px">68</p>
+        </div>
+
+        <canvas width=500 height=30 id="legend" style="border:1px solid black ; margin-left: 80px"></svg>
+        </div>
+
+        <div>
+        <h2> Top 15 Tree Species: Average Tree Age</h2>
+        <p> Each ring represents the <b>average age</b> of one of the <b>15 most popular tree species</b> in San Francisco.</p>
+
+        <svg id = "radar" height = "650" width = "650"  ></svg>
+         </div>
+        </div>
+
+        <script>
+            
+            const svg = d3.select("#map");
+            const width = svg.attr("width");
+            const height = svg.attr("height");
+            const margin = { top: 20, right: 20, bottom: 20, left: 20 };
+            const mapWidth = width - margin.left - margin.right;
+            const mapHeight = height - margin.top - margin.bottom;
+            const map = svg.append("g")
+                        .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+            const svg2 = d3.select("#radar");
+            const rwidth = svg2.attr("width");
+            const rheight = svg2.attr("height");
+            const rmargin = { top: 20, right: 20, bottom: 20, left: 20 };
+            const radar = svg2.append("g")
+                        .attr("transform", "translate(" + rmargin.left + "," + rmargin.top + ")");
+
+            const legend = d3.select("#legend").append("svg")
+            
+            const requestData = async function () {
+            
+                // create map outline
+                const sf = await d3.json("SF-Neighborhoods.geo.json");
+
+                var neighborhoods = topojson.feature(sf, sf.objects.SFNeighborhoods);
+                var projection = d3.geoMercator().fitSize([mapWidth, mapHeight], neighborhoods);
+                var path = d3.geoPath().projection(projection);
+              
+                map.selectAll("path.neighborhood").data(neighborhoods.features)
+                .join("path")
+                .attr("class", "neighborhood")
+                .attr("d", path)
+                .attr("stroke","grey")
+                .attr("fill", "white");
+                        
+                // load in trees
+                const trees = await d3.csv("Street_Tree_List-2022-01-30_FILTERED.csv", d3.autoType);
+
+                // creating dictionary for radar chart
+                const speciesCount = {}; 
+                const speciesTotalAge = {};
+
+                // this forEach does a few different things 
+                trees.forEach( d => {
+                  d.Position = projection( [d.Longitude, d.Latitude] );
+
+                  // calculate tree age! (for map dot colors)
+                  d.PlantDate = new Date(d.PlantDate); // convert date into javascript
+                  const current_date = new Date(); // today's date
+                  const age_milliseconds = current_date - d.PlantDate; // calculate age, currently in ms
+                  const age_years = Math.round(age_milliseconds / (365.25 * 24 * 60 * 60 * 1000)); // convert
+                  d.Age = age_years;
+
+                  // counting how many trees in each species (for radar chart)
+                  const species = d.qSpecies;
+                    if (speciesCount[species]) {
+                        speciesCount[species]++;
+                    } else {
+                        speciesCount[species] = 1;
+                    }
+                
+                  // calculating total age of each tree species (to later find average age of each species)
+                  const age = d.Age; 
+                  if (speciesTotalAge[species]) {
+                        speciesTotalAge[species] += age;
+                    } else {
+                        speciesTotalAge[species] = age;
+                    }
+                });
+    
+                // create a color scale for trees
+
+                const colorScale = d3.scaleSequential(d3.interpolateLab("#CFFF04","#185a37")).domain(d3.extent(trees, d => d.Age));
+                // https://d3js.org/d3-interpolate
+                console.log(d3.extent(trees, d => d.Age)) // to determine age labels
+
+
+                // set up the map
+                map.selectAll("circle").data(trees)
+                    .join("circle")
+                    .attr("r", 2)
+                    .attr("fill", d => colorScale(d.Age)) // dependent on age of tree
+                    .attr("opacity", .6)
+                    .attr("cx", d => d.Position[0])
+                    .attr("cy", d => d.Position[1]);
+
+
+                // add a legend
+            
+                function createColorGradient( canvasElement, colorScale ) {
+  
+                const lwidth = canvasElement.attr("width");
+                const lheight = canvasElement.attr("height");
+                colorScale = colorScale.copy().domain([0, lwidth]);
+                var context = canvasElement.node().getContext('2d');
+
+
+                for (let x=0; x<=lwidth-1; x++) {
+                    const color = colorScale(x);
+                    context.fillStyle = color;                    
+                    context.beginPath();
+                    context.rect(x, 0, 1, lheight);
+                    context.fill();
+
+                };
+            }
+                createColorGradient( d3.select("canvas#legend"), d3.scaleSequential(d3.interpolateLab("#CFFF04","#185a37")) );
+               
+
+
+                // SET UP VALUES FOR RING CHART (top 15 trees & their average age)
+
+                    // resource: https://www.freecodecamp.org/news/how-to-iterate-over-objects-in-javascript/
+
+                    // doing this to get the top 15 species, need to sort 
+                    const speciesArray = Object.keys(speciesCount).map(species => ({ species, count: speciesCount[species] })); 
+                        speciesArray.sort((a, b) => b.count - a.count); // rank greatest to least # trees in a species
+                        const top15Counts = speciesArray.slice(0, 15); // grab the top 15 most common species & their counts
+                
+                    // calculate average age for each species
+                    const speciesAvgAge = {}
+                    Object.keys(speciesTotalAge).forEach(d => {
+                        if (speciesCount[d]) {
+                            speciesAvgAge[d] = Math.round(speciesTotalAge[d] / speciesCount[d]);
+                        }
+                    });
+
+                    // collect the top 15 species and their average ages
+                    const top15Ages = {}
+                    top15Counts.forEach(d => { // for each of the top 15...
+                    if (speciesAvgAge[d.species]) { // if species is in the average age object
+                        top15Ages[d.species] = speciesAvgAge[d.species]; // its age is now assigned!
+                        }
+                    });
+                    
+                     console.log(top15Ages); // this took sooo long to figure out
+
+                // SET UP RING CHART:
+
+                const radiusScale = d3.scaleLinear()
+                .domain([35,53]) // age range is 37-51
+                .range([0, 280]);
+                    
+                //  border circle  for aesthetic purposes
+                    radar.append("circle")
+                        .attr("r", 290)
+                        .attr("fill", "#C4A484")
+                        .attr("cx", rwidth / 2)
+                        .attr("cy", rheight / 2)
+                        .attr("stroke", "#432616")
+                        .attr("stroke-width", 25); 
+                
+                 // rings (one per species )
+                Object.keys(top15Ages).forEach(d => {
+                    radar.append("circle")
+                    .attr("r", radiusScale(top15Ages[d]))
+                    .attr("fill", "none")
+                    .attr("cx", rwidth / 2)
+                    .attr("cy", rheight / 2)
+                    .attr("stroke", "#5C4033")
+                    .attr("stroke-width", 3);
+                })       
+                 
+                // adding in axis             
+                let radiusAxis = d3.axisLeft(radiusScale)                     
+                radar.append('g')
+                .attr("class","axis")
+                .attr("transform", "translate(" + (rmargin.left+305) + "," + (rmargin.top+305) + ")")
+                .call(radiusAxis);
+               
+    
+            }
+            requestData();
+        </script>
+
+    </body>
+</html>
+
+
+
